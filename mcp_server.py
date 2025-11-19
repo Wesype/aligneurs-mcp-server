@@ -319,7 +319,6 @@ def query_sql(sql: str) -> str:
     except Exception as e:
         return f"Erreur SQL: {str(e)}"
 
-@mcp.tool()
 def get_activities_stats() -> str:
     """
     Obtient des statistiques sur les activités.
@@ -339,7 +338,6 @@ def get_activities_stats() -> str:
     """
     return query_sql(sql)
 
-@mcp.tool()
 def get_activities_by_type() -> str:
     """
     Compte les activités par type.
@@ -358,7 +356,6 @@ def get_activities_by_type() -> str:
     """
     return query_sql(sql)
 
-@mcp.tool()
 def get_activities_by_dentist(limit: int = 20) -> str:
     """
     Liste les activités par dentiste.
@@ -384,7 +381,6 @@ def get_activities_by_dentist(limit: int = 20) -> str:
     """
     return query_sql(sql)
 
-@mcp.tool()
 def search_activities(
     activity_type: str = None,
     patient_id: int = None,
@@ -439,7 +435,6 @@ def search_activities(
     """
     return query_sql(sql)
 
-@mcp.tool()
 def get_patient_activities(patient_id: int) -> str:
     """
     Récupère toutes les activités d'un patient.
@@ -468,7 +463,6 @@ def get_patient_activities(patient_id: int) -> str:
     """
     return query_sql(sql)
 
-@mcp.tool()
 def get_schema_info() -> str:
     """
     Affiche le schéma complet de la base de données avec toutes les tables et colonnes.
