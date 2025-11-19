@@ -303,4 +303,4 @@ def get_schema_info() -> str:
 if __name__ == "__main__":
     # Lancer le serveur MCP
     logger.info("Starting MCP server...")
-    mcp.run(transport="sse")
+    mcp.run(transport="sse", host="0.0.0.0", port=PORT)
