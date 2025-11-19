@@ -7,6 +7,11 @@ Déployable sur Railway avec transport HTTP/SSE pour Dust
 from mcp.server.fastmcp import FastMCP
 import psycopg
 import os
+import logging
+
+# Configuration du logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Configuration de la base de données
 # Railway injecte automatiquement DATABASE_URL
@@ -15,11 +20,14 @@ DATABASE_URL = os.getenv('DATABASE_URL')
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is required")
 
+logger.info(f"DATABASE_URL configured: {DATABASE_URL[:20]}...")
+
 # Configuration du serveur
 PORT = int(os.getenv('PORT', 8000))
+logger.info(f"Server will listen on port {PORT}")
 
-# Créer le serveur MCP avec transport HTTP
-mcp = FastMCP("Aligneurs Database", host="0.0.0.0", port=PORT)
+# Créer le serveur MCP
+mcp = FastMCP("Aligneurs Database")
 
 def get_connection():
     """Obtenir une connexion à la base de données"""
@@ -293,5 +301,6 @@ def get_schema_info() -> str:
         return f"Erreur: {str(e)}"
 
 if __name__ == "__main__":
-    # Lancer le serveur MCP
-    mcp.run()
+    # Lancer le serveur MCP en mode HTTP/SSE
+    import uvicorn
+    uvicorn.run(mcp.app, host="0.0.0.0", port=PORT)
