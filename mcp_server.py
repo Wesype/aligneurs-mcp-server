@@ -4,36 +4,260 @@ Serveur MCP pour interroger la base PostgreSQL des activités aligneurs
 Déployable sur Railway avec transport HTTP/SSE pour Dust
 """
 
-from mcp.server.fastmcp import FastMCP
-import psycopg
 import os
+import json
+import asyncio
 import logging
+from typing import Any
+from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+import psycopg
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configuration de la base de données
-# Railway injecte automatiquement DATABASE_URL
 DATABASE_URL = os.getenv('DATABASE_URL')
-
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is required")
 
 logger.info(f"DATABASE_URL configured: {DATABASE_URL[:20]}...")
 
-# Configuration du serveur
-PORT = int(os.getenv('PORT', 8000))
-logger.info(f"Server will listen on port {PORT}")
+# Créer l'application FastAPI
+app = FastAPI()
 
-# Créer le serveur MCP
-mcp = FastMCP("Aligneurs Database")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def get_connection():
     """Obtenir une connexion à la base de données"""
     return psycopg.connect(DATABASE_URL)
 
-@mcp.tool()
+# Health check endpoint
+@app.get("/")
+async def root():
+    """Health check."""
+    return {
+        "status": "ok",
+        "service": "Aligneurs MCP SSE Server",
+        "protocol": "mcp/sse",
+        "version": "1.0.0"
+    }
+
+# SSE endpoint
+@app.get("/sse")
+async def sse_endpoint(request: Request):
+    """SSE endpoint for MCP protocol."""
+    
+    async def event_stream():
+        """Generate SSE events for MCP protocol."""
+        try:
+            base_url = str(request.base_url).rstrip('/').replace('http://', 'https://')
+            endpoint_url = f"{base_url}/message"
+            
+            yield f"event: endpoint\n"
+            yield f"data: {endpoint_url}\n\n"
+            
+            logger.info(f"SSE connection established, endpoint: {endpoint_url}")
+            
+            while True:
+                if await request.is_disconnected():
+                    logger.info("Client disconnected from SSE")
+                    break
+                await asyncio.sleep(30)
+                yield f": heartbeat\n\n"
+                
+        except Exception as e:
+            logger.error(f"SSE error: {e}")
+    
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+# Message handler
+@app.post("/message")
+async def handle_message(request: Request):
+    """Handle MCP JSON-RPC messages."""
+    try:
+        body = await request.json()
+        method = body.get("method")
+        params = body.get("params", {})
+        msg_id = body.get("id")
+        
+        logger.info(f"Received MCP message: {method} (id: {msg_id})")
+        
+        if method == "initialize":
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {
+                        "name": "aligneurs-mcp",
+                        "version": "1.0.0"
+                    }
+                }
+            }
+        
+        elif method == "tools/list":
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {"tools": get_tools_list()}
+            }
+        
+        elif method == "tools/call":
+            tool_name = params.get("name")
+            arguments = params.get("arguments", {})
+            
+            result_text = await call_tool(tool_name, arguments)
+            
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {
+                    "content": [{
+                        "type": "text",
+                        "text": result_text
+                    }]
+                }
+            }
+        
+        else:
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "error": {
+                    "code": -32601,
+                    "message": f"Method not found: {method}"
+                }
+            }
+    
+    except Exception as e:
+        logger.error(f"Error handling message: {e}", exc_info=True)
+        return {
+            "jsonrpc": "2.0",
+            "id": body.get("id") if 'body' in locals() else None,
+            "error": {
+                "code": -32603,
+                "message": str(e)
+            }
+        }
+
+def get_tools_list():
+    """Return list of available tools."""
+    return [
+        {
+            "name": "query_sql",
+            "description": "Exécute une requête SQL SELECT personnalisée sur la base de données PostgreSQL des activités aligneurs",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "sql": {
+                        "type": "string",
+                        "description": "Requête SQL SELECT à exécuter"
+                    }
+                },
+                "required": ["sql"]
+            }
+        },
+        {
+            "name": "get_schema_info",
+            "description": "Affiche le schéma complet de la base de données avec toutes les tables et colonnes",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "get_activities_stats",
+            "description": "Obtient des statistiques générales sur les activités",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "get_activities_by_type",
+            "description": "Compte les activités par type",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "get_activities_by_dentist",
+            "description": "Liste les activités par dentiste",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Nombre maximum de dentistes à afficher",
+                        "default": 20
+                    }
+                }
+            }
+        },
+        {
+            "name": "search_activities",
+            "description": "Recherche des activités avec des filtres",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "activity_type": {"type": "string", "description": "Type d'activité"},
+                    "patient_id": {"type": "integer", "description": "ID du patient"},
+                    "dentist_email": {"type": "string", "description": "Email du dentiste"},
+                    "date_from": {"type": "string", "description": "Date de début (YYYY-MM-DD)"},
+                    "date_to": {"type": "string", "description": "Date de fin (YYYY-MM-DD)"},
+                    "limit": {"type": "integer", "description": "Nombre maximum de résultats", "default": 50}
+                }
+            }
+        },
+        {
+            "name": "get_patient_activities",
+            "description": "Récupère toutes les activités d'un patient",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "patient_id": {"type": "integer", "description": "ID du patient"}
+                },
+                "required": ["patient_id"]
+            }
+        }
+    ]
+
+async def call_tool(name: str, arguments: dict[str, Any]) -> str:
+    """Execute a tool and return result as JSON string."""
+    try:
+        if name == "query_sql":
+            result = query_sql(arguments["sql"])
+        elif name == "get_schema_info":
+            result = get_schema_info()
+        elif name == "get_activities_stats":
+            result = get_activities_stats()
+        elif name == "get_activities_by_type":
+            result = get_activities_by_type()
+        elif name == "get_activities_by_dentist":
+            result = get_activities_by_dentist(arguments.get("limit", 20))
+        elif name == "search_activities":
+            result = search_activities(**arguments)
+        elif name == "get_patient_activities":
+            result = get_patient_activities(arguments["patient_id"])
+        else:
+            return json.dumps({"error": f"Unknown tool: {name}"})
+        
+        return result
+    
+    except Exception as e:
+        logger.error(f"Error calling tool {name}: {e}", exc_info=True)
+        return json.dumps({"error": str(e)})
+
 def query_sql(sql: str) -> str:
     """
     Exécute une requête SQL SELECT personnalisée sur la base de données.
@@ -300,11 +524,9 @@ def get_schema_info() -> str:
     except Exception as e:
         return f"Erreur: {str(e)}"
 
-if __name__ == "__main__":
-    # Lancer le serveur MCP avec uvicorn directement
-    logger.info("Starting MCP server...")
-    import uvicorn
-    from mcp.server.sse import sse_transport
-    
-    app = sse_transport(mcp)
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+# Ce bloc n'est plus nécessaire car on utilise start.sh avec uvicorn
+# if __name__ == "__main__":
+#     import uvicorn
+#     PORT = int(os.getenv('PORT', 8000))
+#     logger.info(f"Starting Aligneurs MCP server on port {PORT}...")
+#     uvicorn.run(app, host="0.0.0.0", port=PORT)
