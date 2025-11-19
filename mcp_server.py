@@ -301,6 +301,10 @@ def get_schema_info() -> str:
         return f"Erreur: {str(e)}"
 
 if __name__ == "__main__":
-    # Lancer le serveur MCP
+    # Lancer le serveur MCP avec uvicorn directement
     logger.info("Starting MCP server...")
-    mcp.run(transport="sse", host="0.0.0.0", port=PORT)
+    import uvicorn
+    from mcp.server.sse import sse_transport
+    
+    app = sse_transport(mcp)
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
