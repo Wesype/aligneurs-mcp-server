@@ -13,11 +13,11 @@ from mcp.types import Tool, TextContent
 import uvicorn
 
 # Configuration
-DATABASE_URL = os.getenv('DATABASE_URL')
+DATABASE_URL = os.getenv('DATABASE_PUBLIC_URL') or os.getenv('DATABASE_URL')
 PORT = int(os.getenv('PORT', 8000))
 
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL required")
+    raise ValueError("DATABASE_URL or DATABASE_PUBLIC_URL required")
 
 def get_connection():
     return psycopg.connect(DATABASE_URL)
