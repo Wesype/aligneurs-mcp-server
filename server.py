@@ -8,7 +8,7 @@ import psycopg
 from mcp.server import Server
 from mcp.server.sse import SseServerTransport
 from starlette.applications import Starlette
-from starlette.routing import Route
+from starlette.routing import Route, Mount
 from mcp.types import Tool, TextContent
 import uvicorn
 
@@ -133,9 +133,18 @@ async def handle_sse(scope, receive, send):
 async def handle_messages(scope, receive, send):
     await sse.handle_post_message(scope, receive, send)
 
+from starlette.responses import Response
+
+async def sse_route(scope, receive, send):
+    if scope["method"] == "GET":
+        await handle_sse(scope, receive, send)
+    else:
+        response = Response("Method Not Allowed", status_code=405)
+        await response(scope, receive, send)
+
 app = Starlette(
     routes=[
-        Route("/sse", endpoint=handle_sse, methods=["GET"]),
+        Mount("/sse", app=sse_route),
         Route("/messages", endpoint=handle_messages, methods=["POST"]),
     ]
 )
