@@ -135,7 +135,7 @@ async def handle_messages(scope, receive, send):
 
 app = Starlette(
     routes=[
-        Route("/sse", endpoint=handle_sse),
+        Route("/sse", endpoint=handle_sse, methods=["GET"]),
         Route("/messages", endpoint=handle_messages, methods=["POST"]),
     ]
 )
