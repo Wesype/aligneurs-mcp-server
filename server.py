@@ -3,6 +3,7 @@
 MCP Server pour PostgreSQL - Activités Aligneurs
 """
 import os
+from urllib.parse import quote_plus
 import psycopg
 from mcp.server.fastmcp import FastMCP
 import uvicorn
@@ -11,8 +12,20 @@ import uvicorn
 DATABASE_URL = os.getenv('DATABASE_PUBLIC_URL') or os.getenv('DATABASE_URL')
 PORT = int(os.getenv('PORT', 8000))
 
+# Si DATABASE_URL n'existe pas, construire depuis les composants
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL or DATABASE_PUBLIC_URL required")
+    db_host = os.getenv('DATABASE_HOST')
+    db_port = os.getenv('DATABASE_PORT', '5432')
+    db_name = os.getenv('DATABASE_NAME', 'postgres')
+    db_user = os.getenv('DATABASE_USER_NAME')
+    db_password = os.getenv('DATABASE_PASSWORD')
+    
+    if db_host and db_user and db_password:
+        # Encoder le mot de passe pour échapper les caractères spéciaux
+        encoded_password = quote_plus(db_password)
+        DATABASE_URL = f"postgresql://{db_user}:{encoded_password}@{db_host}:{db_port}/{db_name}"
+    else:
+        raise ValueError("DATABASE_URL or database credentials required")
 
 def get_connection():
     return psycopg.connect(DATABASE_URL)
