@@ -88,8 +88,8 @@ def get_schema() -> str:
         import traceback
         return f"Error: {e}\n\nDetails:\n{traceback.format_exc()}"
 
-# Créer l'application ASGI
-app = mcp.get_asgi_app()
+# Créer l'application ASGI avec FastMCP
+app = mcp.streamable_http_app()
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=PORT)
