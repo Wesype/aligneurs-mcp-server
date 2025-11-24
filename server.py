@@ -124,14 +124,14 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 # Créer l'application Starlette avec SSE
 sse = SseServerTransport("/messages")
 
-async def handle_sse(request):
-    async with sse.connect_sse(request.scope, request.receive, request._send) as streams:
+async def handle_sse(scope, receive, send):
+    async with sse.connect_sse(scope, receive, send) as streams:
         await mcp_server.run(
             streams[0], streams[1], mcp_server.create_initialization_options()
         )
 
-async def handle_messages(request):
-    await sse.handle_post_message(request.scope, request.receive, request._send)
+async def handle_messages(scope, receive, send):
+    await sse.handle_post_message(scope, receive, send)
 
 app = Starlette(
     routes=[
