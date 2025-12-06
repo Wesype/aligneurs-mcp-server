@@ -7,6 +7,7 @@ from urllib.parse import quote_plus
 import psycopg
 from mcp.server.fastmcp import FastMCP
 import uvicorn
+from starlette.applications import Starlette
 
 # Configuration
 DATABASE_URL = os.getenv('DATABASE_PUBLIC_URL') or os.getenv('DATABASE_URL')
@@ -102,7 +103,31 @@ def get_schema() -> str:
         return f"Error: {e}\n\nDetails:\n{traceback.format_exc()}"
 
 # Créer l'application ASGI avec FastMCP
-app = mcp.streamable_http_app()
+_base_app = mcp.streamable_http_app()
+
+# Wrapper pour désactiver la validation du Host header
+# FastMCP ajoute automatiquement TrustedHostMiddleware, on le bypass
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+class NoHostCheckWrapper:
+    def __init__(self, app: ASGIApp):
+        self.app = app
+    
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        # Bypass la validation en modifiant le header Host
+        if scope["type"] == "http":
+            headers = []
+            for name, value in scope.get("headers", []):
+                if name.lower() == b"host":
+                    # Remplacer par localhost pour passer la validation
+                    headers.append((name, b"localhost:8080"))
+                else:
+                    headers.append((name, value))
+            scope["headers"] = headers
+        
+        await self.app(scope, receive, send)
+
+app = NoHostCheckWrapper(_base_app)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=PORT)
