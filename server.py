@@ -61,23 +61,23 @@ def query_sql(sql: str) -> str:
 
 @mcp.tool()
 def get_stats() -> str:
-    """Get database statistics"""
-    sql = """
-    SELECT 
-        COUNT(*) as total,
-        COUNT(DISTINCT patient_id) as patients,
-        MIN(date_activity) as first_date,
-        MAX(date_activity) as last_date
-    FROM activities
-    """
+    """Get database statistics from activity_dentist_info table"""
+    sql = "SELECT * FROM activity_dentist_info LIMIT 1"
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(sql)
         row = cursor.fetchone()
+        columns = [desc[0] for desc in cursor.description]
+        
+        # Formater les résultats de manière lisible
+        result = "Statistics from activity_dentist_info:\n\n"
+        for col, val in zip(columns, row):
+            result += f"{col}: {val}\n"
+        
         cursor.close()
         conn.close()
-        return f"Total: {row[0]}, Patients: {row[1]}, Period: {row[2]} to {row[3]}"
+        return result
     except Exception as e:
         import traceback
         return f"Error: {e}\n\nDetails:\n{traceback.format_exc()}"
